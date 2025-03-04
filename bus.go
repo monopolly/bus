@@ -2,6 +2,7 @@ package bus
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -9,11 +10,15 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-type Message = *nats.Msg
+// message
+type Message = nats.Msg
+type Conn = nats.Conn
 
+// stream
 type Stream = jetstream.JetStream
 
-func New(token, host, storename string) (a *Engine, err error) {
+// storename like "store", "app","settings" etc
+func New(host, token, storename string) (a *Engine, err error) {
 	a = new(Engine)
 	a.token = token
 	a.host = host
@@ -23,7 +28,7 @@ func New(token, host, storename string) (a *Engine, err error) {
 }
 
 type Engine struct {
-	conn      *nats.Conn
+	conn      *Conn
 	token     string
 	host      string
 	storename string
@@ -36,25 +41,40 @@ func (a *Engine) init() (err error) {
 
 	// connection
 	for {
+		log.Println("bus connecting...")
 		c, err := nats.Connect(a.host, nats.Token(a.token))
 		if err != nil {
+			log.Println("bus connection error:", err)
 			time.Sleep(time.Second * 5)
-			log.Println("bus error:", err)
 			continue
 		}
 
 		a.conn = c
+		log.Println("bus connected")
 		break
 	}
 
 	// init stream
-	a.stream, err = jetstream.New(a.conn)
-	if err != nil {
-		return
-	}
-	// default store
-	a.store = a.GetStore(a.storename)
+	a.stream, _ = jetstream.New(a.conn)
+
+	// init store
+	a.store, err = a.Store(a.storename)
 	return
+}
+
+// close conn
+func (a *Engine) Close() {
+	a.conn.Close()
+}
+
+// close conn
+func (a *Engine) Conn() *Conn {
+	return a.conn
+}
+
+// close conn
+func (a *Engine) Stream() Stream {
+	return a.stream
 }
 
 // time.*.east or time.us.>
@@ -81,7 +101,7 @@ func (a *Engine) Subscribe(to string, v func([]byte)) (err error) {
 }
 
 // time.*.east or time.us.>
-func (a *Engine) SubscribeMessage(to string, v func(Message)) (err error) {
+func (a *Engine) SubscribeMessage(to string, v func(*Message)) (err error) {
 	_, err = a.conn.Subscribe(to, func(msg *nats.Msg) {
 		v(msg)
 	})
@@ -97,7 +117,7 @@ func (a *Engine) Group(to, group string, v func([]byte)) (err error) {
 }
 
 // time.*.east or time.us.>
-func (a *Engine) GroupMessage(to, group string, v func(Message)) (err error) {
+func (a *Engine) GroupMessage(to, group string, v func(*Message)) (err error) {
 	_, err = a.conn.QueueSubscribe(to, group, func(msg *nats.Msg) {
 		v(msg)
 	})
@@ -134,16 +154,15 @@ func (a *Engine) Int(k string) (res int, err error) {
 	return a.store.Int(k)
 }
 
-func (a *Engine) GetStore(name string) (res *Store) {
+func (a *Engine) Store(name string) (store *Store, err error) {
 
-	// stream
-	if a.stream == nil {
+	store = new(Store)
+	store.store, err = a.stream.CreateKeyValue(context.Background(), jetstream.KeyValueConfig{Bucket: name})
+	if err != nil {
+		fmt.Println("bus store error", err, "(or maybe you have to turn on -js on docker image for jetstream)")
 		return
 	}
-
-	var store Store
-	store.store, _ = a.stream.CreateKeyValue(context.Background(), jetstream.KeyValueConfig{Bucket: name})
-	res = &store
+	log.Println("bus init", fmt.Sprintf(`"%s"`, name), "store")
 	return
 
 }
