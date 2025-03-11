@@ -15,7 +15,7 @@ type Message = nats.Msg
 type Conn = nats.Conn
 
 // stream
-type Stream = jetstream.JetStream
+// type Stream = jetstream.JetStream
 
 // storename like "store", "app","settings" etc
 func New(host, token, storename string) (a *Engine, err error) {
@@ -33,8 +33,9 @@ type Engine struct {
 	host      string
 	storename string
 
-	stream Stream
-	store  *Store
+	stream jetstream.JetStream
+
+	store *Store
 }
 
 func (a *Engine) init() (err error) {
@@ -73,7 +74,7 @@ func (a *Engine) Conn() *Conn {
 }
 
 // close conn
-func (a *Engine) Stream() Stream {
+func (a *Engine) JetStream() jetstream.JetStream {
 	return a.stream
 }
 
