@@ -61,9 +61,10 @@ func TestQueue(u *testing.T) {
 		return
 	}
 
-	log.Println("s2")
-	p.Subscribe(name+".ios", func(topic string, body []byte) (done bool) {
-		log.Println("got s2", topic, string(body))
+	log.Println("s1")
+	p.Subscribe("ios", name+".ios", func(topic string, body []byte) (done bool) {
+		log.Println("s1ios:", topic, string(body))
+		time.Sleep(time.Second * 7)
 		return true
 	})
 
@@ -75,14 +76,29 @@ func TestQueue(u *testing.T) {
 	p.Publish(name+".win", []byte("win"))
 	time.Sleep(time.Second)
 
-	log.Println("s1")
-	p.Subscribe(name+".win", func(topic string, body []byte) (done bool) {
-		log.Println("s1", topic, string(body))
-		time.Sleep(time.Second * 5)
+	// log.Println("connect...")
+	c2, err := New(host, token, storename)
+	if err != nil {
+		log.Println("queue:", err)
+		return
+	}
+	p2, err := c2.Queue(name, name+".*")
+	if err != nil {
+		log.Println("create queue:", err)
+		return
+	}
+
+	p2.Subscribe("ios", name+".ios", func(topic string, body []byte) (done bool) {
+		log.Println("g1ios:", topic, string(body))
+		time.Sleep(time.Second * 2)
 		return true
 	})
-	p.Subscribe(name+".android", func(topic string, body []byte) (done bool) {
-		log.Println("s3", topic, string(body))
+	p.Subscribe("android", name+".android", func(topic string, body []byte) (done bool) {
+		log.Println("s3android", topic, string(body))
+		return true
+	})
+	p.Subscribe("win", name+".win", func(topic string, body []byte) (done bool) {
+		log.Println("s3win", topic, string(body))
 		return true
 	})
 
@@ -91,7 +107,7 @@ func TestQueue(u *testing.T) {
 	go func() {
 		log.Println("publishing...")
 		for {
-			time.Sleep(time.Second * 2)
+			time.Sleep(time.Second)
 			log.Println("queue")
 			p.Publish(name+".ios", []byte(time.Now().String()))
 

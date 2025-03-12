@@ -10,7 +10,7 @@ import (
 type Stream = jetstream.Stream
 
 // name and topics must
-// signup, signup.*
+// signup, signup.*, signup.>
 func (a *Engine) Queue(name string, subj ...string) (queue Queue, err error) {
 	if subj == nil {
 		err = fmt.Errorf("subj must be")
@@ -44,10 +44,11 @@ func (a *Queue) Publish(subj string, b []byte) (err error) {
 	return a.conn.Publish(subj, b)
 }
 
-// signup.ios.>
-func (a *Queue) Subscribe(subj string, v func(topic string, body []byte) (done bool)) (err error) {
-	c, err := a.stream.CreateOrUpdateConsumer(context.Background(), jetstream.ConsumerConfig{
+// signup.ios, signup.ios.>
+func (a *Queue) Subscribe(group, subj string, v func(topic string, body []byte) (done bool)) (err error) {
+	c, err := a.stream.CreateConsumer(context.Background(), jetstream.ConsumerConfig{
 		AckPolicy:     jetstream.AckExplicitPolicy,
+		Durable:       group,
 		FilterSubject: subj,
 	})
 	if err != nil {
