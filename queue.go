@@ -47,7 +47,6 @@ func (a *Queue) Group(subj string, v func(topic string, body []byte) (done bool)
 		return
 	}
 
-	fmt.Println("durable name: ", unique(subj))
 	go c.Consume(func(m jetstream.Msg) {
 		done := v(m.Subject(), m.Data())
 		switch done {
@@ -62,10 +61,10 @@ func (a *Queue) Group(subj string, v func(topic string, body []byte) (done bool)
 }
 
 // DoubleAck acknowledges a message and waits for ack reply from the server
-func (a *Queue) GroupDoubleAck(name, subj string, v func(topic string, body []byte) (done bool)) (err error) {
+func (a *Queue) GroupDoubleAck(subj string, v func(topic string, body []byte) (done bool)) (err error) {
 	c, err := a.stream.CreateOrUpdateConsumer(context.Background(), jetstream.ConsumerConfig{
 		AckPolicy:     jetstream.AckExplicitPolicy,
-		Durable:       name,
+		Durable:       unique(subj),
 		FilterSubject: subj,
 	})
 	if err != nil {
@@ -83,4 +82,8 @@ func (a *Queue) GroupDoubleAck(name, subj string, v func(topic string, body []by
 	})
 
 	return
+}
+
+func (a *Queue) Stream() jetstream.Stream {
+	return a.stream
 }
