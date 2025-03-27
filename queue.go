@@ -2,7 +2,6 @@ package bus
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/nats-io/nats.go/jetstream"
 )
@@ -14,16 +13,12 @@ type Queue struct {
 	conn   *Engine
 }
 
-// name and topics must
 // js.signup, js.signup.*, js.signup.>
-func (a *Engine) Queue(name string, subj ...string) (queue Queue, err error) {
-	if subj == nil {
-		err = fmt.Errorf("subj must be")
-		return
-	}
+func (a *Engine) Queue(name string, subj string, subjs ...string) (queue Queue, err error) {
+
 	s, err := a.stream.CreateOrUpdateStream(context.Background(), jetstream.StreamConfig{
 		Name:      name,
-		Subjects:  subj,
+		Subjects:  append([]string{subj}, subjs...),
 		Retention: jetstream.WorkQueuePolicy,
 		Storage:   jetstream.FileStorage,
 	})
