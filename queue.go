@@ -7,16 +7,21 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-type Stream = jetstream.Stream
+// queue
+type Queue struct {
+	name   string
+	stream jetstream.Stream
+	conn   *Engine
+}
 
 // name and topics must
-// signup, signup.*, signup.>
+// js.signup, js.signup.*, js.signup.>
 func (a *Engine) Queue(name string, subj ...string) (queue Queue, err error) {
 	if subj == nil {
 		err = fmt.Errorf("subj must be")
 		return
 	}
-	s, err := a.stream.CreateStream(context.Background(), jetstream.StreamConfig{
+	s, err := a.stream.CreateOrUpdateStream(context.Background(), jetstream.StreamConfig{
 		Name:      name,
 		Subjects:  subj,
 		Retention: jetstream.WorkQueuePolicy,
@@ -31,24 +36,36 @@ func (a *Engine) Queue(name string, subj ...string) (queue Queue, err error) {
 	return
 }
 
-// queue
-type Queue struct {
-	name   string
-	stream jetstream.Stream
-	conn   *Engine
-}
-
-// send queue task signup.ios, signup.email
-func (a *Queue) Publish(subj string, b []byte) (err error) {
-	Wait(a.conn)
-	return a.conn.Publish(subj, b)
-}
-
 // signup.ios, signup.ios.>
-func (a *Queue) Subscribe(group, subj string, v func(topic string, body []byte) (done bool)) (err error) {
-	c, err := a.stream.CreateConsumer(context.Background(), jetstream.ConsumerConfig{
+func (a *Queue) Group(subj string, v func(topic string, body []byte) (done bool)) (err error) {
+	c, err := a.stream.CreateOrUpdateConsumer(context.Background(), jetstream.ConsumerConfig{
 		AckPolicy:     jetstream.AckExplicitPolicy,
-		Durable:       group,
+		Durable:       unique(subj),
+		FilterSubject: subj,
+	})
+	if err != nil {
+		return
+	}
+
+	fmt.Println("durable name: ", unique(subj))
+	go c.Consume(func(m jetstream.Msg) {
+		done := v(m.Subject(), m.Data())
+		switch done {
+		case true:
+			m.Ack()
+		default:
+			m.Nak()
+		}
+	})
+
+	return
+}
+
+// DoubleAck acknowledges a message and waits for ack reply from the server
+func (a *Queue) GroupDoubleAck(name, subj string, v func(topic string, body []byte) (done bool)) (err error) {
+	c, err := a.stream.CreateOrUpdateConsumer(context.Background(), jetstream.ConsumerConfig{
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		Durable:       name,
 		FilterSubject: subj,
 	})
 	if err != nil {

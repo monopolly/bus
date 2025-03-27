@@ -15,23 +15,19 @@ var (
 	token     = ""
 	host      = "127.0.0.1"
 	storename = "test"
+	c, _      = New(host, token, storename)
 )
 
-func TestEngine(u *testing.T) {
+func TestStore(u *testing.T) {
 	__(u)
 
-	p, err := New(host, token, storename)
-	if err != nil {
-		panic(err)
-	}
-
-	err = p.AddInt("int", 42)
+	err := c.AddInt("int", 42)
 	if err != nil {
 		log.Println(err)
 		panic("add int")
 	}
 
-	i, err := p.Int("int")
+	i, err := c.Int("int")
 	if err != nil {
 		log.Println(err)
 		panic("int")
@@ -46,71 +42,51 @@ func TestEngine(u *testing.T) {
 func TestQueue(u *testing.T) {
 	__(u)
 
-	name := "qqq"
-	// log.Println("connect...")
-	c, err := New(host, token, storename)
-	if err != nil {
-		log.Println("queue:", err)
-		return
-	}
+	name := "testmail2"
+
+	Wait(c)
 
 	log.Println("create queue...")
-	p, err := c.Queue(name, name+".*")
+	q, err := c.Queue(name, name+".*")
 	if err != nil {
 		log.Println("create queue:", err)
 		return
 	}
 
-	log.Println("s1")
-	p.Subscribe("ios", name+".ios", func(topic string, body []byte) (done bool) {
-		log.Println("s1ios:", topic, string(body))
-		time.Sleep(time.Second * 7)
+	err = q.Group(name+".send", func(topic string, body []byte) (done bool) {
+		log.Println("send1:", topic, string(body))
 		return true
 	})
-
-	log.Println("publish first...")
-	p.Publish(name+".ios", []byte("ios"))
-	time.Sleep(time.Second)
-	p.Publish(name+".android", []byte("android"))
-	time.Sleep(time.Second)
-	p.Publish(name+".win", []byte("win"))
-	time.Sleep(time.Second)
-
-	// log.Println("connect...")
-	c2, err := New(host, token, storename)
 	if err != nil {
-		log.Println("queue:", err)
-		return
-	}
-	p2, err := c2.Queue(name, name+".*")
-	if err != nil {
-		log.Println("create queue:", err)
-		return
+		panic(err)
 	}
 
-	p2.Subscribe("ios", name+".ios", func(topic string, body []byte) (done bool) {
-		log.Println("g1ios:", topic, string(body))
-		time.Sleep(time.Second * 2)
+	q.Group(name+".send", func(topic string, body []byte) (done bool) {
+		log.Println("send2:", topic, string(body))
 		return true
 	})
-	p.Subscribe("android", name+".android", func(topic string, body []byte) (done bool) {
-		log.Println("s3android", topic, string(body))
+	q.Group(name+".send", func(topic string, body []byte) (done bool) {
+		log.Println("send3:", topic, string(body))
 		return true
 	})
-	p.Subscribe("win", name+".win", func(topic string, body []byte) (done bool) {
-		log.Println("s3win", topic, string(body))
+	q.Group(name+".confirm", func(topic string, body []byte) (done bool) {
+		log.Println("confirm1:", topic, string(body))
+		return true
+	})
+	q.Group(name+".confirm", func(topic string, body []byte) (done bool) {
+		log.Println("confirm2:", topic, string(body))
 		return true
 	})
 
-	time.Sleep(time.Second)
-
+	var count int
 	go func() {
-		log.Println("publishing...")
-		for {
+		c2, _ := New(host, token, storename)
+		for range 10 {
 			time.Sleep(time.Second)
-			log.Println("queue")
-			p.Publish(name+".ios", []byte(time.Now().String()))
-
+			count++
+			c2.Publish(name+".send", fmt.Appendf([]byte{}, "%d", count))
+			count++
+			c2.Publish(name+".confirm", fmt.Appendf([]byte{}, "%d", count))
 		}
 	}()
 

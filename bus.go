@@ -14,9 +14,6 @@ import (
 type Message = nats.Msg
 type Conn = nats.Conn
 
-// stream
-// type Stream = jetstream.JetStream
-
 // storename like "store", "app","settings" etc
 func New(host, token, storename string) (a *Engine, err error) {
 	a = new(Engine)
