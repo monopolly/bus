@@ -2,8 +2,6 @@ package bus
 
 import (
 	"context"
-	"fmt"
-	"log"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -37,25 +35,13 @@ type Engine struct {
 
 func (a *Engine) init() (err error) {
 
-	// connection
-	for {
-		log.Println("bus connecting...")
-		c, err := nats.Connect(a.host, nats.Token(a.token))
-		if err != nil {
-			log.Println("bus connection error:", err)
-			time.Sleep(time.Second * 5)
-			continue
-		}
-
-		a.conn = c
-		log.Println("bus connected")
-		break
+	c, err := nats.Connect(a.host, nats.Token(a.token))
+	if err != nil {
+		return
 	}
 
-	// init stream
+	a.conn = c
 	a.stream, _ = jetstream.New(a.conn)
-
-	// init store
 	a.store, err = a.Store(a.storename)
 	return
 }
@@ -157,10 +143,10 @@ func (a *Engine) Store(name string) (store *Store, err error) {
 	store = new(Store)
 	store.store, err = a.stream.CreateKeyValue(context.Background(), jetstream.KeyValueConfig{Bucket: name})
 	if err != nil {
-		fmt.Println("bus store error", err, "(or maybe you have to turn on -js on docker image for jetstream)")
+		// fmt.Println("bus store error", err, "(or maybe you have to turn on -js on docker image for jetstream)")
 		return
 	}
-	log.Println("bus init", fmt.Sprintf(`"%s"`, name), "store")
+	// log.Println("bus init", fmt.Sprintf(`"%s"`, name), "store")
 	return
 
 }
