@@ -3,7 +3,6 @@ package bus
 import (
 	"context"
 
-	"github.com/monopolly/numbers"
 	"github.com/nats-io/nats.go/jetstream"
 )
 
@@ -25,7 +24,7 @@ func (a *Store) AddString(k string, v string) (err error) {
 
 // add mail.host, mail.token etc
 func (a *Store) AddInt(k string, v int) (err error) {
-	_, err = a.store.Put(context.Background(), k, numbers.IntBytes(v))
+	_, err = a.store.Put(context.Background(), k, IntBytes(v))
 	return
 }
 
@@ -86,6 +85,6 @@ func (a *Store) Int(k string) (res int, err error) {
 		return
 	}
 
-	res = numbers.BytesInt(v.Value())
+	res = BytesInt(v.Value())
 	return
 }
