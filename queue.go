@@ -1,12 +1,11 @@
 package bus
 
 import (
-	"context"
-
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-// queue
+// queue: every message is delivered to exactly one worker of the group
+// and removed from the stream once acknowledged
 type Queue struct {
 	name   string
 	stream jetstream.Stream
@@ -15,8 +14,13 @@ type Queue struct {
 
 // js.signup, js.signup.*, js.signup.>
 func (a *Engine) Queue(name string, subj string, subjs ...string) (queue Queue, err error) {
+	if err = a.js(); err != nil {
+		return
+	}
+	c, cancel := ctx()
+	defer cancel()
 
-	s, err := a.stream.CreateOrUpdateStream(context.Background(), jetstream.StreamConfig{
+	s, err := a.stream.CreateOrUpdateStream(c, jetstream.StreamConfig{
 		Name:      name,
 		Subjects:  append([]string{subj}, subjs...),
 		Retention: jetstream.WorkQueuePolicy,
@@ -31,33 +35,42 @@ func (a *Engine) Queue(name string, subj string, subjs ...string) (queue Queue, 
 	return
 }
 
-// signup.ios, signup.ios.>
-func (a *Queue) Group(subj string, v func(topic string, body []byte) (done bool)) (err error) {
-	c, err := a.stream.CreateOrUpdateConsumer(context.Background(), jetstream.ConsumerConfig{
-		AckPolicy:     jetstream.AckExplicitPolicy,
-		Durable:       unique(subj),
-		FilterSubject: subj,
-	})
-	if err != nil {
-		return
+func (a *Queue) ready() error {
+	if a == nil || a.stream == nil || a.conn == nil {
+		return ErrNoStream
 	}
-
-	go c.Consume(func(m jetstream.Msg) {
-		done := v(m.Subject(), m.Data())
-		switch done {
-		case true:
-			m.Ack()
-		default:
-			m.Nak()
-		}
-	})
-
-	return
+	return nil
 }
 
-// DoubleAck acknowledges a message and waits for ack reply from the server
+// Publish sends a task to the queue and waits for the server to persist it
+func (a *Queue) Publish(subj string, b []byte) (err error) {
+	if err = a.ready(); err != nil {
+		return
+	}
+	return a.conn.jsPublish(subj, b)
+}
+
+// signup.ios, signup.ios.>
+// all Group calls with the same subj share one durable consumer,
+// so messages are load balanced between them.
+// return false from v to get the message redelivered after NakDelay
+func (a *Queue) Group(subj string, v func(topic string, body []byte) (done bool)) (err error) {
+	return a.group(subj, v, false)
+}
+
+// GroupDoubleAck acknowledges a message and waits for ack reply from the server
 func (a *Queue) GroupDoubleAck(subj string, v func(topic string, body []byte) (done bool)) (err error) {
-	c, err := a.stream.CreateOrUpdateConsumer(context.Background(), jetstream.ConsumerConfig{
+	return a.group(subj, v, true)
+}
+
+func (a *Queue) group(subj string, v func(topic string, body []byte) (done bool), double bool) (err error) {
+	if err = a.ready(); err != nil {
+		return
+	}
+	c, cancel := ctx()
+	defer cancel()
+
+	cons, err := a.stream.CreateOrUpdateConsumer(c, jetstream.ConsumerConfig{
 		AckPolicy:     jetstream.AckExplicitPolicy,
 		Durable:       unique(subj),
 		FilterSubject: subj,
@@ -65,18 +78,11 @@ func (a *Queue) GroupDoubleAck(subj string, v func(topic string, body []byte) (d
 	if err != nil {
 		return
 	}
+	return consume(cons, v, double)
+}
 
-	go c.Consume(func(m jetstream.Msg) {
-		done := v(m.Subject(), m.Data())
-		switch done {
-		case true:
-			m.DoubleAck(context.Background())
-		default:
-			m.Nak()
-		}
-	})
-
-	return
+func (a *Queue) Name() string {
+	return a.name
 }
 
 func (a *Queue) Stream() jetstream.Stream {
